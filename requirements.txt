@@ -1,0 +1,8 @@
+streamlit
+fastapi
+uvicorn
+pdfplumber
+chromadb
+sentence-transformers
+anthropic
+python-dotenv
