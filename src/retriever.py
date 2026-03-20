@@ -1,8 +1,9 @@
 import chromadb
 from sentence_transformers import SentenceTransformer
+import os
 
 model = SentenceTransformer('all-MiniLM-L6-v2')
-client = chromadb.PersistentClient(path="./chroma_db")
+client = chromadb.PersistentClient(path=os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "chroma_db"))
 collection = client.get_or_create_collection(name="regulations")
 
 def retrieve(query, n_results=5):

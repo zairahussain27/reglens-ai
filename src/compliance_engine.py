@@ -29,7 +29,7 @@ def run_compliance_check(business_profile: dict) -> str:
         regulatory_context += f"\n[Source: {source}]\n{chunk}\n"
     
     # Load prompt template
-    with open("prompts/compliance.txt", "r", encoding="utf-8") as f:
+    with open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "prompts", "compliance.txt"), "r", encoding="utf-8") as f:
         prompt_template = f.read()
     
     # Fill prompt
