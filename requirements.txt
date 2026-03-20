@@ -4,5 +4,5 @@ uvicorn
 pdfplumber
 chromadb
 sentence-transformers
-anthropic
+groq
 python-dotenv
