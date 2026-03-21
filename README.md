@@ -49,5 +49,5 @@ ET AI Hackathon 2026 — Problem Statement 5: Domain-Specialized AI Agents
 with Compliance Guardrails
 
 ## Team - ZenAI
-- Zaira — zairahussain
-- ZenAI — DivyanshiPrajapti
+- Zaira Hussain — zairahussain27
+- Divyanhi Prajapati — divyanshiprajapti
