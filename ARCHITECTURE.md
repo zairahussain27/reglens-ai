@@ -17,14 +17,14 @@ document. If it cannot be grounded, the system flags it rather than guessing.
 ## 2. Architecture Diagram
 ```
 ┌─────────────────────────────────────────────────────────┐
-│                    USER INTERFACE                        │
-│              Streamlit Web Application                   │
+│                    USER INTERFACE                       │
+│              Streamlit Web Application                  │
 │         (Business Profile Form + Results View)          │
 └─────────────────────┬───────────────────────────────────┘
                       │
                       ▼
 ┌─────────────────────────────────────────────────────────┐
-│                 GUARDRAIL LAYER                          │
+│                 GUARDRAIL LAYER                         │
 │  ┌─────────────────┐     ┌──────────────────────────┐   │
 │  │ Scope Validator │     │ Confidence Assessor      │   │
 │  │                 │     │                          │   │
@@ -32,46 +32,46 @@ document. If it cannot be grounded, the system flags it rather than guessing.
 │  │ is in supported │     │ chunks are sufficient    │   │
 │  │ domain          │     │ (min 3 chunks required)  │   │
 │  └────────┬────────┘     └─────────────┬────────────┘   │
-│           │ PASS                       │ PASS            │
+│           │ PASS                       │ PASS           │
 └───────────┼────────────────────────────┼────────────────┘
             │                            │
             ▼                            ▼
 ┌─────────────────────────────────────────────────────────┐
-│                  RETRIEVAL LAYER                         │
-│                                                          │
+│                  RETRIEVAL LAYER                        │
+│                                                         │
 │   Business Profile → Query Builder → Embedding Model    │
 │   (all-MiniLM-L6-v2 / sentence-transformers)            │
-│                      │                                   │
-│                      ▼                                   │
-│              ChromaDB Vector Store                       │
+│                      │                                  │
+│                      ▼                                  │
+│              ChromaDB Vector Store                      │
 │         (1,356 chunks from 11 government PDFs)          │
-│                      │                                   │
-│                      ▼                                   │
+│                      │                                  │
+│                      ▼                                  │
 │         Top 8 Most Relevant Regulation Chunks           │
 └─────────────────────┬───────────────────────────────────┘
                       │
                       ▼
-┌─────────────────────────────────────────────────────────┐
+┌──────────────────────────────────────────────────────────┐
 │               REASONING LAYER                            │
 │                                                          │
 │   Prompt Template + Business Profile + Regulation Chunks │
 │                      │                                   │
 │                      ▼                                   │
-│         LLaMA 3.3 70B via Groq API                      │
-│         Temperature: 0.1 (strict factual mode)          │
+│         LLaMA 3.3 70B via Groq API                       │
+│         Temperature: 0.1 (strict factual mode)           │
 │                      │                                   │
 │   Output:                                                │
-│   - Applicable / Conditional / Not Applicable           │
-│   - Why it applies (grounded in retrieved chunks)       │
+│   - Applicable / Conditional / Not Applicable            │
+│   - Why it applies (grounded in retrieved chunks)        │
 │   - Compliance checklist                                 │
-│   - Risk level (High / Medium / Low)                    │
-│   - Flags & uncertainties                               │
-└─────────────────────┬───────────────────────────────────┘
+│   - Risk level (High / Medium / Low)                     │
+│   - Flags & uncertainties                                │
+└─────────────────────┬────────────────────────────────────┘
                       │
                       ▼
 ┌─────────────────────────────────────────────────────────┐
-│                OUTPUT LAYER                              │
-│         Structured Compliance Analysis Report            │
+│                OUTPUT LAYER                             │
+│         Structured Compliance Analysis Report           │
 │    Displayed in Streamlit UI with source citations      │
 └─────────────────────────────────────────────────────────┘
 ```
