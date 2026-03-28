@@ -9,7 +9,7 @@ client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
 SUPPORTED_INDUSTRIES = [
     "fintech", "digital payments", "lending", "nbfc", "msme",
-    "manufacturing", "gst", "ecommerce", "e-commerce", "services"
+    "manufacturing", "gst", "ecommerce", "e-commerce"
 ]
 
 def is_in_scope(business_profile: dict) -> bool:
