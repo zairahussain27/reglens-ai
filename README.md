@@ -50,4 +50,3 @@ with Compliance Guardrails
 
 ## Team - ZenAI
 - Zaira Hussain — zairahussain27
-- Divyanhi Prajapati — divyanshiprajapti
