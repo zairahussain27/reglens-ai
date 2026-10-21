@@ -1,0 +1,2 @@
+import type { PropsWithChildren } from "react";
+export function AuthLayout({ children }: PropsWithChildren) { return <main className="auth-shell"><section className="auth-side"><div className="brand"><span className="brand-mark">⌕</span>RegLens AI</div><div><h2>Compliance answers you can check.</h2><p>Ask about any regulation in your library and see exactly where each answer comes from.</p></div><div /></section><section className="auth-content">{children}</section></main>; }

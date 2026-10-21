@@ -1,0 +1,16 @@
+node_modules/
+frontend/dist/
+.vercel/
+__pycache__/
+*.pyc
+.pytest_cache/
+backend/.env
+backend/.venv/
+backend/uploads/*
+!backend/uploads/.gitkeep
+*.db
+*.db-shm
+*.db-wal
+backend/data/*
+!backend/data/.gitkeep
+*.tsbuildinfo

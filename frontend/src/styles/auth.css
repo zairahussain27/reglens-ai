@@ -1,0 +1,1 @@
+.auth-divider{display:flex;align-items:center;gap:12px;color:var(--color-faint);font-size:13px;margin:18px 0}.modal-backdrop{position:fixed;inset:0;background:rgba(26,26,26,.24);display:grid;place-items:center;padding:24px;z-index:10}.modal-backdrop>.card{width:min(520px,100%);box-shadow:0 20px 60px rgba(26,26,26,.18)}
