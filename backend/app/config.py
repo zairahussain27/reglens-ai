@@ -1,4 +1,5 @@
 from functools import lru_cache
+import os
 from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -45,5 +46,7 @@ def get_settings() -> Settings:
     s = Settings()
     if s.env == "production" and s.jwt_secret.startswith("dev-only"):
         raise RuntimeError("JWT_SECRET must be set when ENV=production")
+    if os.getenv("VERCEL"):
+        s.upload_dir = Path("/tmp/uploads")
     s.upload_dir.mkdir(parents=True, exist_ok=True)
     return s
