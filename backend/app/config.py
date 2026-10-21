@@ -47,6 +47,7 @@ def get_settings() -> Settings:
     if s.env == "production" and s.jwt_secret.startswith("dev-only"):
         raise RuntimeError("JWT_SECRET must be set when ENV=production")
     if os.getenv("VERCEL"):
+        s.database_url = "sqlite:////tmp/reglens.db"
         s.upload_dir = Path("/tmp/uploads")
     s.upload_dir.mkdir(parents=True, exist_ok=True)
     return s
