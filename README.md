@@ -97,6 +97,12 @@ Vercel SPA rewrite at [`frontend/vercel.json`](./frontend/vercel.json).
 After deployment, verify `https://<render-service>.onrender.com/api/health`
 returns `{"status":"ok"}` and copy the service URL.
 
+The Docker service listens on Render's injected `PORT` value and falls back to
+port `8000` for local Docker runs. FastEmbed is loaded lazily: it is initialized
+at startup only when both `QDRANT_URL` and `QDRANT_API_KEY` are configured, and
+otherwise the application uses SQL/BM25 retrieval. Keep both Qdrant variables
+when vector retrieval is required.
+
 ### 2. Deploy the frontend on Vercel
 
 1. Import `zairahussain27/reglens-ai` into Vercel.

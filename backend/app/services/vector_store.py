@@ -1,14 +1,17 @@
 """Qdrant storage for regulation and library chunk embeddings."""
 import logging
 from functools import lru_cache
+from typing import TYPE_CHECKING
 
 from qdrant_client import QdrantClient, models
-from fastembed import TextEmbedding
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from ..config import get_settings
 from ..models import Chunk
+
+if TYPE_CHECKING:
+    from fastembed import TextEmbedding
 
 log = logging.getLogger("reglens.vector_store")
 settings = get_settings()
@@ -18,6 +21,7 @@ settings = get_settings()
 def _embedding_model() -> TextEmbedding:
     if settings.embeddings != "fastembed":
         raise RuntimeError(f"Unsupported embeddings provider: {settings.embeddings}")
+    from fastembed import TextEmbedding
     return TextEmbedding(model_name=settings.embedding_model)
 
 
