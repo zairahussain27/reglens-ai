@@ -20,6 +20,21 @@ def test_auth_flow(client):
     assert client.get("/api/config").json() == {"google_client_id": None}
 
 
+def test_auth_preflight(client):
+    for path in ("/api/auth/signup", "/api/auth/login"):
+        response = client.options(
+            path,
+            headers={
+                "Origin": "https://reglens-ai-zeta.vercel.app",
+                "Access-Control-Request-Method": "POST",
+                "Access-Control-Request-Headers": "content-type",
+            },
+        )
+        assert response.status_code == 200
+        assert response.headers["access-control-allow-origin"] == "https://reglens-ai-zeta.vercel.app"
+        assert "POST" in response.headers["access-control-allow-methods"]
+
+
 def test_seed_regulations_and_ask(client, auth):
     h, _ = auth
     regs = client.get("/api/regulations", headers=h).json()

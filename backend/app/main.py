@@ -13,7 +13,6 @@ from .config import get_settings
 from .db import Base, SessionLocal, engine
 from .routers import alerts, ask, assessments, auth, company, dashboard, library, regulations, reminders, reports, risk
 from .routers import settings as settings_router
-from .services import regs, vector_store
 
 log = logging.getLogger("reglens")
 settings = get_settings()
@@ -49,26 +48,13 @@ async def lifespan(_: FastAPI):
         db.execute(update(User).where(User.email == "zairahussain27@gmail.com").values(role="admin"))
         db.execute(update(User).where(User.email != "zairahussain27@gmail.com").values(role="user"))
         db.commit()
-        try:
-            added = regs.seed_directory(db, include_pdfs=True)
-            db.commit()
-            if added:
-                log.info("Seeded %s platform regulations", added)
-            else:
-                vector_store.sync_chunks(db)
-        except Exception:  # never block startup on seed problems
-            db.rollback()
-            log.exception("Seed ingestion failed")
     yield
 
 
 app = FastAPI(title="RegLens AI API", version="1.0.0", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "https://reglens-ai-zeta.vercel.app",
-        "http://localhost:5173",
-    ],
+    allow_origins=settings.origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

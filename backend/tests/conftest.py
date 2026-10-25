@@ -12,6 +12,8 @@ from fastapi.testclient import TestClient  # noqa: E402
 
 from app.main import app  # noqa: E402
 from app.config import get_settings  # noqa: E402
+from app.db import SessionLocal  # noqa: E402
+from app.services.regs import seed_directory  # noqa: E402
 
 # Tests must never inherit credentials from the developer's .env or write to a
 # real Qdrant collection. Use the SQL retrieval path and omit Google sign-in.
@@ -35,7 +37,9 @@ for _name, _content in _seed_texts.items():
 
 @pytest.fixture(scope="session")
 def client():
-    with TestClient(app) as c:  # runs lifespan => tables + seed regulations
+    with TestClient(app) as c:
+        with SessionLocal() as db:
+            seed_directory(db, include_pdfs=False)
         yield c
 
 

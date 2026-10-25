@@ -12,7 +12,7 @@ services:
       - key: JWT_SECRET
         generateValue: true
       - key: DATABASE_URL
-        value: sqlite:////data/reglens.db
+        sync: false
       - key: UPLOAD_DIR
         value: /data/uploads
       - key: CORS_ORIGINS

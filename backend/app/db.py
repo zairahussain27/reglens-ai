@@ -5,11 +5,13 @@ from .config import get_settings
 
 settings = get_settings()
 _is_sqlite = settings.database_url.startswith("sqlite")
-engine = create_engine(
-    settings.database_url,
-    connect_args={"check_same_thread": False} if _is_sqlite else {},
-    pool_pre_ping=True,
-)
+engine_options = {
+    "connect_args": {"check_same_thread": False} if _is_sqlite else {"prepare_threshold": None},
+    "pool_pre_ping": True,
+}
+if not _is_sqlite:
+    engine_options.update(pool_size=1, max_overflow=0, pool_recycle=300, pool_timeout=30, pool_use_lifo=True)
+engine = create_engine(settings.database_url, **engine_options)
 
 if _is_sqlite:
     @event.listens_for(engine, "connect")
