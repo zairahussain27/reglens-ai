@@ -63,8 +63,17 @@ async def lifespan(_: FastAPI):
 
 
 app = FastAPI(title="RegLens AI API", version="1.0.0", lifespan=lifespan)
-app.add_middleware(CORSMiddleware, allow_origins=settings.origins, allow_methods=["*"], allow_headers=["*"],
-                   expose_headers=["Content-Disposition"])
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "https://reglens-ai-zeta.vercel.app",
+        "http://localhost:5173",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+    expose_headers=["Content-Disposition"],
+)
 
 api = APIRouter(prefix="/api")
 
