@@ -24,8 +24,9 @@ npm install
 npm run dev
 ```
 
-Five sample regulations (RBI KYC, RBI Digital Lending, DPDP Act, SEBI LODR, GST returns) are loaded on first start
-from `backend/seed/regulations/`. They are short **demo summaries** - replace them with official texts.
+Five sample regulations (RBI KYC, RBI Digital Lending, DPDP Act, SEBI LODR, GST returns) can be loaded through the
+admin regulation-seeding route from `backend/seed/regulations/`. They are short **demo summaries** - replace them
+with official texts. Seeding and embedding are not performed during API startup.
 Drop more `.txt` files there (see the header format in the existing ones) or upload PDFs under Regulations.
 
 ## Single-process / production
@@ -86,13 +87,32 @@ Vercel SPA rewrite at [`frontend/vercel.json`](./frontend/vercel.json).
 3. Set these environment variables in Render:
    - `ENV=production`
    - `JWT_SECRET`: a long random value (the Blueprint can generate it)
-   - `CORS_ORIGINS`: the final Vercel URL, such as
-     `https://reglens-ai.vercel.app`
+   - `DATABASE_URL`: a Supabase PostgreSQL URL. The application accepts Supabase
+     `postgresql://`/`postgres://` URLs and uses the `psycopg` driver.
+   - `CORS_ORIGINS`: `https://reglens-ai-zeta.vercel.app,http://localhost:5173`
    - `GOOGLE_CLIENT_ID`, `ANTHROPIC_API_KEY`, `GROQ_API_KEY`, `QDRANT_URL`, and
      `QDRANT_API_KEY` only when those integrations are used.
 4. Keep the persistent disk mounted at `/data`. The default SQLite database and
-   uploaded files are stored there. For production scale, replace `DATABASE_URL`
-   with a managed PostgreSQL URL and keep `/data` for uploaded files.
+   uploaded files are stored there. User and application records are stored in
+   PostgreSQL; `/data` is only for uploaded files.
+
+### 1b. Deploy the backend on Vercel
+
+If the backend is a separate Vercel project, set its root directory to `backend`.
+The included [`backend/vercel.json`](./backend/vercel.json) and
+[`backend/api/index.py`](./backend/api/index.py) expose the FastAPI application.
+Configure these variables in the backend Vercel project:
+
+- `ENV=production`
+- `JWT_SECRET` (a long random value)
+- `DATABASE_URL` (the Supabase PostgreSQL connection or pooler URL)
+- `CORS_ORIGINS=https://reglens-ai-zeta.vercel.app,http://localhost:5173`
+- `UPLOAD_DIR=/tmp/uploads`
+- Optional `GOOGLE_CLIENT_ID`, `ANTHROPIC_API_KEY`, `GROQ_API_KEY`,
+  `QDRANT_URL`, and `QDRANT_API_KEY`
+
+On Vercel, a PostgreSQL `DATABASE_URL` is mandatory. SQLite is retained only for
+local development.
 
 After deployment, verify `https://<render-service>.onrender.com/api/health`
 returns `{"status":"ok"}` and copy the service URL.
@@ -111,7 +131,7 @@ when vector retrieval is required.
    - Build command: `npm run build`
    - Output directory: `dist`
 4. Add the environment variable
-   `VITE_API_BASE_URL=https://<render-service>.onrender.com/api`.
+   `VITE_API_BASE_URL=https://reglens-backend.vercel.app/api`.
 5. Deploy, then set the resulting Vercel URL as Render's `CORS_ORIGINS` value
    and redeploy the backend.
 

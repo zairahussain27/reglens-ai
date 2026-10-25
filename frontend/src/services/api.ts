@@ -1,6 +1,9 @@
 import type { AuthResult, User } from "../types/api";
 
-const baseUrl = (import.meta.env.VITE_API_BASE_URL as string | undefined) || "/api";
+const configuredBaseUrl = import.meta.env.VITE_API_BASE_URL as string | undefined;
+const hostname = typeof window === "undefined" ? "" : window.location.hostname;
+const localHost = hostname === "localhost" || hostname === "127.0.0.1";
+const baseUrl = configuredBaseUrl || (localHost ? "/api" : "https://reglens-backend.vercel.app/api");
 const TOKEN_KEY = "rl_token";
 
 export class ApiError extends Error {
