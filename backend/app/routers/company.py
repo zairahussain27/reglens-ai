@@ -76,8 +76,7 @@ def clean(body: dict, db: Session, wid: int) -> dict:
 def _resp(c) -> dict:
     data = c.data or {}
     public_data = {key: value for key, value in data.items() if key != "_legal_name_change_used"}
-    return {"company": public_data, "options": OPTIONS, "profile": profile_status(data, c.dismissed),
-            "legal_name_change_used": bool(data.get("_legal_name_change_used", False))}
+    return {"company": public_data, "options": OPTIONS, "profile": profile_status(data, c.dismissed)}
 
 
 @router.get("")
@@ -94,12 +93,8 @@ def put_company(body: dict, user: User = Depends(current_user), db: Session = De
     previous_name = str(previous.get("legal_name") or "").strip()
     updated = clean(body, db, user.workspace_id)
     updated_name = updated["legal_name"].strip()
-    change_used = bool(previous.get("_legal_name_change_used", False))
     if previous_name and updated_name != previous_name:
-        if change_used:
-            raise HTTPException(403, "The one-time legal name change has already been used")
-        change_used = True
-    updated["_legal_name_change_used"] = change_used
+        raise HTTPException(403, "The registered legal name cannot be changed")
     c.data = updated
     c.dismissed = str(body.get("save_for_later", "")).lower() == "true"
     c.updated_at = utcnow()

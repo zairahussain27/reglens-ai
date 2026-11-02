@@ -1,4 +1,3 @@
-
 import type { User } from "../types/api";
 import { Link } from "../router";
 import { Icon } from "./Icon";
@@ -54,6 +53,12 @@ const navigationGroups = [
         label: "Reminders",
         href: "#/reminders",
         icon: "reminders",
+      },
+      {
+        id: "filings",
+        label: "Filings & Calendar",
+        href: "#/filings",
+        icon: "filings",
       },
     ],
   },

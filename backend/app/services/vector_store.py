@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 from functools import lru_cache
+from collections import defaultdict
 from typing import TYPE_CHECKING
 
 from qdrant_client import QdrantClient, models
@@ -135,3 +136,55 @@ def search(query: str, workspace_id: int, limit: int = 5):
         collection_name=settings.qdrant_collection, query=vector, query_filter=visibility,
         limit=limit, score_threshold=settings.min_score, with_payload=True,
     ).points
+
+
+@lru_cache
+def _legacy_point_ranges() -> dict[int, tuple[int, int]]:
+    ranges: dict[int, list[int]] = defaultdict(list)
+    offset = None
+    while True:
+        points, offset = _client().scroll(
+            collection_name=settings.qdrant_collection,
+            limit=256,
+            offset=offset,
+            with_payload=True,
+            with_vectors=False,
+        )
+        for point in points:
+            source_id = (point.payload or {}).get("source_id")
+            if isinstance(source_id, int) and isinstance(point.id, int):
+                ranges[source_id].append(point.id)
+        if offset is None:
+            break
+    return {
+        source_id: (min(point_ids), max(point_ids))
+        for source_id, point_ids in ranges.items()
+    }
+
+
+def resolve_legacy_chunks(db: Session, points):
+    """Resolve vectors from the previous chunk-ID sequence to current SQL chunks."""
+    from sqlalchemy import select
+    from ..models import Chunk
+
+    ranges = _legacy_point_ranges()
+    current_by_source: dict[int, list[Chunk]] = defaultdict(list)
+    for chunk in db.scalars(select(Chunk).where(Chunk.source_type == "regulation").order_by(Chunk.id)):
+        current_by_source[chunk.source_id].append(chunk)
+
+    resolved: dict[int, Chunk] = {}
+    for point in points:
+        payload = point.payload or {}
+        old_source = payload.get("source_id")
+        point_id = point.id
+        if not isinstance(old_source, int) or not isinstance(point_id, int):
+            continue
+        current_source = old_source + 4
+        source_range = ranges.get(old_source)
+        chunks = current_by_source.get(current_source, [])
+        if not source_range or not chunks:
+            continue
+        ordinal = point_id - source_range[0]
+        if 0 <= ordinal < len(chunks):
+            resolved[point_id] = chunks[ordinal]
+    return resolved

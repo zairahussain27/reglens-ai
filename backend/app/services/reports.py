@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from ..models import Regulation, User
 from ..utils import iso
-from . import metrics
+from . import metrics, scoring
 
 KINDS = ["Compliance summary", "Risk review", "Regulation updates"]
 ORANGE = colors.HexColor("#ff5a1f")
@@ -28,14 +28,27 @@ def build_snapshot(db: Session, user: User, kind: str) -> dict:
             sections.append({"heading": "Assessment", "paragraphs": ["No assessment has been created yet."]})
         else:
             c = a.counts or {}
+            summary = scoring.compliance_summary(a.findings)
+            score = f"{summary['score']}%" if summary["score"] is not None else "not yet calculated"
             sections.append({"heading": f"Assessment #{a.id} ({a.status})", "paragraphs": [
-                f"Compliance score: {a.compliance_score if a.compliance_score is not None else 'n/a'}%   |   "
-                f"Risk score: {a.risk_score if a.risk_score is not None else 'n/a'}%",
+                f"AI compliance score: {score}   |   Risk score: {a.risk_score if a.risk_score is not None else 'n/a'}%",
+                f"Evidence coverage: {round((summary['coverage'] or 0) * 100)}% ({summary['assessed']} of {summary['total']} "
+                f"obligations verified)   |   Confidence: {summary['confidence'] or 'n/a'}   |   Basis: {summary['basis'] or 'n/a'}",
                 f"Applicable: {c.get('applicable', 0)}, not applicable: {c.get('not_applicable', 0)}, "
-                f"unknown: {c.get('unknown', 0)}, evidence gaps: {c.get('evidence_gaps', 0)}."]})
+                f"unknown: {c.get('unknown', 0)}, evidence gaps: {c.get('evidence_gaps', 0)}.",
+                "Scores are AI-assisted estimates based on the business profile, registrations, filings and enabled Library "
+                "documents. They support, and do not replace, review by a qualified professional."]})
             sections.append({"heading": "Findings", "table": {
-                "head": ["Regulation", "Applicability", "Compliance", "Severity", "Remediation"],
-                "rows": [[f.title, f.applicability, f.compliance_status, f.severity, f.remediation_status] for f in a.findings]}})
+                "head": ["Regulation", "Applicability", "Compliance", "Score", "Severity", "Remediation"],
+                "rows": [[f.title, f.applicability, f.compliance_status,
+                          (f"{summary['by_finding'].get(f.id, {}).get('score')}%"
+                           if summary["by_finding"].get(f.id, {}).get("score") is not None else "-"),
+                          f.severity, f.remediation_status] for f in a.findings]}})
+            plan = scoring.action_plan(a.findings, 12)
+            if plan:
+                sections.append({"heading": "Priority action plan", "table": {
+                    "head": ["Priority", "Regulation", "Requirement", "Next step"],
+                    "rows": [[p["priority"], p["regulation"], p["requirement"], p["action"]] for p in plan]}})
     elif kind == "Risk review":
         s = metrics.risk_summary(db, wid)
         assessment = metrics.latest_assessment(db, wid)

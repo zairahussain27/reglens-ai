@@ -38,6 +38,6 @@ export function Page({ children }: PropsWithChildren) { return <main className="
 export function Table({ children }: PropsWithChildren) { return <div className="table-wrap"><table>{children}</table></div>; }
 export function Actions({ children }: PropsWithChildren) { return <div className="actions">{children}</div>; }
 export function Empty({ children }: PropsWithChildren) { return <p className="empty">{children}</p>; }
-export function Kpi({ value, label, hint }: { value: ReactNode; label: string; hint?: string }) {
-  return <div className="kpi"><strong>{value}</strong><span>{label}</span>{hint && <small>{hint}</small>}</div>;
+export function Kpi({ value, label, hint, title }: { value: ReactNode; label: string; hint?: string; title?: string }) {
+  return <div className="kpi"><strong title={title}>{value}</strong><span>{label}</span>{hint && <small>{hint}</small>}</div>;
 }

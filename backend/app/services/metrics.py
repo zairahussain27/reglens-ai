@@ -14,8 +14,8 @@ UNKNOWN_APPLICABILITY_WEIGHT = 0.5
 RISK_FORMULA = (
     "Per regulation: 100 × (severity ÷ 3) × (likelihood ÷ 3) × the highest applicable gap weight. "
     "Gap weights: non-compliant 1.0, partially compliant or unassessed 0.5, unverified compliant evidence 0.25. "
-    "Unknown applicability uses 0.5; not-applicable findings are excluded; resolved findings score 0. "
-    "The assessment score is the mean of applicable and potentially applicable findings. "
+    "Unknown applicability is shown as an unscored potential contributor; not-applicable findings are excluded; "
+    "resolved findings score 0. The assessment score is the mean of applicable findings with a determined compliance status. "
     "Risk levels: Low 0–29, Medium 30–69, High 70–100."
 )
 
@@ -58,6 +58,45 @@ def compute_scores(findings) -> tuple[float | None, int | None, dict]:
     return compliance, risk, counts
 
 
+def compliance_details(findings) -> dict:
+    applicable = [f for f in findings if f.applicability == "Applicable"]
+    points = []
+    estimated = False
+    for finding in applicable:
+        structured = finding.ai_findings or []
+        if finding.ai_evaluated and structured:
+            statuses = [item.get("status") for item in structured if isinstance(item, dict)]
+            known = [COMPLIANCE_PTS[status] for status in statuses if status in COMPLIANCE_PTS]
+            if known:
+                points.extend(known)
+            if any(status == "Unable to Determine" for status in statuses):
+                points.append(50)
+                estimated = True
+        elif finding.compliance_status in COMPLIANCE_PTS:
+            points.append(COMPLIANCE_PTS[finding.compliance_status])
+        else:
+            points.append(50)
+            estimated = True
+    score = round(sum(points) / len(points), 1) if points else None
+    return {"score": score, "estimated": estimated}
+
+
+def compliance_score_reason(findings) -> str | None:
+    applicable = [f for f in findings if f.applicability == "Applicable"]
+    if not applicable:
+        return "No applicable regulations are available in this assessment."
+    if any(
+        f.ai_evaluated and any(
+            isinstance(item, dict) and item.get("status") in COMPLIANCE_PTS
+            for item in (f.ai_findings or [])
+        )
+        or f.compliance_status in COMPLIANCE_PTS
+        for f in applicable
+    ):
+        return None
+    return "AI evaluation or a manually confirmed compliance status is required for at least one applicable regulation."
+
+
 def risk_finding(f) -> dict:
     applicability = f.applicability or "Unknown"
     compliance_status = f.compliance_status or "Unable to Determine"
@@ -94,12 +133,39 @@ def risk_finding(f) -> dict:
 def risk_details(findings) -> dict:
     candidates = [f for f in findings if (f.applicability or "Unknown") in {"Applicable", "Unknown"}]
     if not candidates:
-        return {"score": None, "level": "Not scored", "formula": RISK_FORMULA,
+        return {"score": None, "level": "Unable to calculate", "formula": RISK_FORMULA,
                 "reasons": ["No applicable or potentially applicable regulations were selected."],
                 "contributors": [], "estimated": False, "applicable_count": 0, "unknown_count": 0,
                 "unassessed_count": 0}
     details = [(f, risk_finding(f)) for f in candidates]
-    score = round(sum(item["score"] for _, item in details) / len(details))
+    scorable = [(f, detail) for f, detail in details
+                if f.applicability == "Applicable"
+                and (f.compliance_status or "Unable to Determine") != "Unable to Determine"]
+    if not scorable:
+        applicable_count = sum((f.applicability or "Unknown") == "Applicable" for f in candidates)
+        unknown_count = sum((f.applicability or "Unknown") == "Unknown" for f in candidates)
+        unassessed_count = sum(
+            (f.compliance_status or "Unable to Determine") == "Unable to Determine"
+            or any(item.get("status") == "Unable to Determine" for item in (f.ai_findings or []) if isinstance(item, dict))
+            for f, _ in details)
+        applicable_details = [(f, detail) for f, detail in details if f.applicability == "Applicable"]
+        estimated_score = round(sum(detail["score"] for _, detail in applicable_details) /
+                                len(applicable_details)) if applicable_details else None
+        level = ("Low" if estimated_score < 30 else "Medium" if estimated_score < 70 else "High") \
+            if estimated_score is not None else "Unable to calculate"
+        return {"score": estimated_score, "level": level, "formula": RISK_FORMULA,
+                "reasons": ["Estimated from applicable findings whose compliance status is not yet confirmed."
+                            if estimated_score is not None else
+                            "A completed assessment has no applicable finding to estimate risk."],
+                "contributors": [{"title": f.title, "applicability": f.applicability or "Unknown",
+                                  "compliance_status": f.compliance_status or "Unable to Determine",
+                                  "severity": f.severity if f.severity in LEVEL_W else "Medium",
+                                  "likelihood": f.likelihood if f.likelihood in LEVEL_W else "Medium",
+                                  "score": detail["score"], "reason": detail["reason"]}
+                                 for f, detail in details],
+                "estimated": estimated_score is not None, "applicable_count": applicable_count,
+                "unknown_count": unknown_count, "unassessed_count": unassessed_count}
+    score = round(sum(item["score"] for _, item in scorable) / len(scorable))
     level = "Low" if score < 30 else "Medium" if score < 70 else "High"
     reasons = [f"{f.title}: {detail['reason']}" for f, detail in details]
     applicable_count = sum((f.applicability or "Unknown") == "Applicable" for f in candidates)

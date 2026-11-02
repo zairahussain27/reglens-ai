@@ -13,7 +13,7 @@ COPY backend/requirements.txt backend/requirements.txt
 RUN pip install --no-cache-dir -r backend/requirements.txt
 COPY backend/ backend/
 COPY --from=web /app/frontend/dist frontend/dist
-ENV ENV=production DATABASE_URL=sqlite:////data/reglens.db UPLOAD_DIR=/data/uploads
+ENV ENV=production UPLOAD_DIR=/data/uploads
 VOLUME /data
 EXPOSE 8000
 WORKDIR /app/backend

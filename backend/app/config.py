@@ -14,12 +14,10 @@ class Settings(BaseSettings):
     env: str = "development"
     jwt_secret: str = "dev-only-secret-change-me"
     jwt_days: int = 7
-    database_url: str = f"sqlite:///{BASE_DIR / 'data' / 'reglens.db'}"
+    database_url: str = ""
     cors_origins: str = "https://reglens-ai-zeta.vercel.app,http://localhost:5173"
     max_upload_mb: int = 15
     google_client_id: str | None = None
-    anthropic_api_key: str | None = None
-    anthropic_model: str = "claude-3-5-haiku-latest"
     groq_api_key: str | None = None
     groq_model: str = "openai/gpt-oss-120b"
     embeddings: str = "fastembed"
@@ -45,9 +43,13 @@ class Settings(BaseSettings):
 @lru_cache
 def get_settings() -> Settings:
     s = Settings()
+    if not s.database_url:
+        raise RuntimeError("DATABASE_URL must be set to a PostgreSQL connection string")
     if s.env == "production" and s.jwt_secret.startswith("dev-only"):
         raise RuntimeError("JWT_SECRET must be set when ENV=production")
     s.database_url = _normalize_database_url(s.database_url)
+    if not _is_valid_postgres_url(s.database_url) and s.env != "test":
+        raise RuntimeError("DATABASE_URL must be a PostgreSQL URL")
     if os.getenv("VERCEL") and s.env == "production" and not _is_valid_postgres_url(s.database_url):
         raise RuntimeError("DATABASE_URL must be a valid PostgreSQL URL on Vercel")
     if os.getenv("VERCEL"):

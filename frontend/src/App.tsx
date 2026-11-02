@@ -12,6 +12,7 @@ import { BusinessPage } from "./pages/BusinessPage";
 import { AssessmentsPage } from "./pages/AssessmentsPage";
 import { RiskPage } from "./pages/RiskPage";
 import { RemindersPage } from "./pages/RemindersPage";
+import { FilingsPage } from "./pages/FilingsPage";
 import { ReportsPage } from "./pages/ReportsPage";
 import { AlertsPage } from "./pages/AlertsPage";
 import { NotificationsPage } from "./pages/NotificationsPage";
@@ -31,6 +32,7 @@ function renderPage(route: string, user: User, setUser: (u: User) => void, onSig
     case "assessments": return <AssessmentsPage />;
     case "risk": return <RiskPage />;
     case "reminders": return <RemindersPage />;
+    case "filings": return <FilingsPage />;
     case "reports": return <ReportsPage />;
     case "alerts": case "notifications": return <NotificationsPage />;
     case "profile": return <ProfilePage user={user} onUserChange={setUser} onSignOut={onSignOut} />;
@@ -65,7 +67,6 @@ export default function App() {
   useEffect(() => {
     if (checking) return;
     if (!user && route !== "signin" && route !== "signup") navigate("signin");
-    if (user && route === "filings") navigate("home");
     if (user && (route === "signin" || route === "signup" || route === "")) navigate("home");
   }, [checking, user, route]);
 

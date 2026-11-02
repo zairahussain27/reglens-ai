@@ -6,16 +6,23 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
-from sqlalchemy import inspect, text
+from sqlalchemy import inspect, select, text
 from sqlalchemy.exc import IntegrityError
 
 from .config import get_settings
 from .db import Base, SessionLocal, engine
-from .routers import alerts, ask, assessments, auth, company, dashboard, library, regulations, reminders, reports, risk
+from .routers import alerts, ask, assessments, auth, company, dashboard, filings, library, regulations, reminders, reports, risk
 from .routers import settings as settings_router
 
 log = logging.getLogger("reglens")
 settings = get_settings()
+
+
+def _ensure_columns(connection, table: str, columns: dict[str, str]) -> None:
+    existing = {c["name"] for c in inspect(connection).get_columns(table)}
+    for name, ddl in columns.items():
+        if name not in existing:
+            connection.execute(text(f"ALTER TABLE {table} ADD COLUMN {name} {ddl}"))
 
 
 @asynccontextmanager
@@ -23,30 +30,30 @@ async def lifespan(_: FastAPI):
     Base.metadata.create_all(engine)
     # Add fields introduced after the first release to existing installations.
     with engine.begin() as connection:
-        risk_columns = {column["name"] for column in inspect(connection).get_columns("risks")}
-        if "ignored" not in risk_columns:
-            connection.execute(text("ALTER TABLE risks ADD COLUMN ignored BOOLEAN NOT NULL DEFAULT FALSE"))
-        finding_columns = {column["name"] for column in inspect(connection).get_columns("findings")}
-        additions = {
-            "ai_evaluated": "BOOLEAN NOT NULL DEFAULT FALSE",
-            "ai_confidence": "FLOAT",
-            "ai_summary": "TEXT",
-            "ai_findings": "JSON",
-        }
-        for name, sql_type in additions.items():
-            if name not in finding_columns:
-                connection.execute(text(f"ALTER TABLE findings ADD COLUMN {name} {sql_type}"))
+        _ensure_columns(connection, "risks", {"ignored": "BOOLEAN NOT NULL DEFAULT FALSE"})
+        _ensure_columns(connection, "findings", {"ai_evaluated": "BOOLEAN NOT NULL DEFAULT FALSE", "ai_confidence": "FLOAT",
+                                                 "ai_summary": "TEXT", "ai_findings": "JSON"})
+        _ensure_columns(connection, "assessments", {"compliance_score_reason": "TEXT", "meta": "JSON"})
         if engine.dialect.name == "postgresql":
-            assessment_columns = {column["name"]: column for column in inspect(connection).get_columns("assessments")}
-            score_type = str(assessment_columns.get("compliance_score", {}).get("type", "")).upper()
+            score_type = str(next((c["type"] for c in inspect(connection).get_columns("assessments")
+                                   if c["name"] == "compliance_score"), "")).upper()
             if "INT" in score_type:
                 connection.execute(text("ALTER TABLE assessments ALTER COLUMN compliance_score TYPE FLOAT USING compliance_score::FLOAT"))
     with SessionLocal() as db:
         # Keep existing installs aligned with the reserved administrator account.
-        from .models import User
+        from .models import Assessment, User
         from sqlalchemy import update
+        from sqlalchemy.orm import selectinload
         db.execute(update(User).where(User.email == "zairahussain27@gmail.com").values(role="admin"))
         db.execute(update(User).where(User.email != "zairahussain27@gmail.com").values(role="user"))
+        from .services import scoring
+        # One-time backfill: re-derive scores for assessments created before score metadata existed.
+        for assessment in db.scalars(select(Assessment).options(selectinload(Assessment.findings))
+                                     .where(Assessment.meta.is_(None))).all():
+            summary = scoring.compliance_summary(assessment.findings)
+            assessment.compliance_score, assessment.compliance_score_reason = summary["score"], summary["reason"]
+            assessment.meta = {"coverage": summary["coverage"], "confidence": summary["confidence"], "basis": summary["basis"],
+                               "assessed": summary["assessed"], "total": summary["total"], "waiting": summary["waiting"]}
         db.commit()
     yield
 
@@ -69,7 +76,8 @@ def health():
     return {"status": "ok"}
 
 
-for module in (auth, dashboard, ask, regulations, library, reports, alerts, company, risk, reminders, settings_router, assessments):
+for module in (auth, dashboard, ask, regulations, library, reports, alerts, company, risk, reminders, filings,
+               settings_router, assessments):
     api.include_router(module.router)
 app.include_router(api)
 

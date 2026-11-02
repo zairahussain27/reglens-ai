@@ -1,136 +1,244 @@
 import { useState } from "react";
-import { Badge, Button, Card, Checkbox, Empty, ErrorNotice, Loader, Page, PageHeader } from "../components/ui";
+import { Alert, Badge, Button, Card, Checkbox, Empty, ErrorNotice, Loader, Page, PageHeader, Select } from "../components/ui";
 import { useFeedback } from "../components/feedback";
 import { useResource } from "../hooks/useResource";
-import { api, formatDate } from "../services/api";
-import type { Assessment, Finding, Regulation } from "../types/api";
+import { api, errorMessage, formatDate, todayISO } from "../services/api";
+import type { ActionItem, AiStatus, Assessment, EvaluateResult, Finding, Regulation } from "../types/api";
 import { Highlight } from "../components/Highlight";
+import { ScoreGauge } from "../components/ScoreGauge";
 
-const pct = (n: number | null) => (n == null ? "Not yet calculated" : `${n}%`);
+type Tab = "regulations" | "plan" | "method";
+type Progress = { done: number; total: number; current: string };
 
-function FindingCard({ finding }: { finding: Finding }) {
-  const tone = finding.applicability === "Applicable" ? "default" : "soft";
+const pct = (n: number | null | undefined) => (n == null ? "Not scored" : `${n}%`);
+const statusLabel = (s: string) => (s === "Unable to Determine" ? "Needs evidence" : s);
+const statusTone = (s: string) => (s === "Non-Compliant" ? "danger" : s === "Compliant" ? "default" : "soft");
+const STATUSES = ["Unable to Determine", "Compliant", "Partially Compliant", "Non-Compliant"];
+const DUE_DAYS: Record<string, number> = { Critical: 7, High: 14, Medium: 30, Low: 45 };
+const addDays = (days: number) => { const d = new Date(); d.setDate(d.getDate() + days); return d.toISOString().slice(0, 10); };
+
+function FindingCard({ finding, locked, busy, onEvaluate, onOverride }: {
+  finding: Finding; locked: boolean; busy: boolean;
+  onEvaluate: (f: Finding) => void; onOverride: (f: Finding, status: string) => void;
+}) {
+  const [open, setOpen] = useState(finding.applicability === "Applicable");
+  const applicable = finding.applicability === "Applicable";
   return (
-    <Card>
-      <div className="row between top">
-        <h3 style={{ margin: 0 }}>{finding.title}</h3>
-        <Badge tone={tone}>{finding.applicability}</Badge>
-      </div>
-      {finding.source_url && <p><a className="auth-link" href={finding.source_url} target="_blank" rel="noreferrer">Open regulation source</a></p>}
-
-      <div className="grid grid-2 section">
+    <Card className="reg-card">
+      <button type="button" className="reg-head" onClick={() => setOpen(!open)} aria-expanded={open}>
         <div>
-          <b>Why this decision</b>
-          <p>{finding.applicability_reason || "No applicability explanation is available."}</p>
+          <h3>{finding.title}</h3>
+          <div className="reg-meta">
+            <Badge tone={applicable ? "default" : "soft"}>{finding.applicability}</Badge>
+            {applicable && <Badge tone={statusTone(finding.compliance_status)}>{statusLabel(finding.compliance_status)}</Badge>}
+            {applicable && !finding.ai_evaluated && <Badge tone="soft">Waiting for AI</Badge>}
+            {finding.manual_override && <Badge tone="soft">Manually set</Badge>}
+            {finding.ai_confidence != null && <span className="muted">AI confidence {Math.round(finding.ai_confidence * 100)}%</span>}
+          </div>
         </div>
-        <div>
-          <b>Compliance status</b>
-          <p>{finding.compliance_status === "Unable to Determine" ? "Unable to determine" : finding.compliance_status}{finding.ai_evaluated ? " · AI evaluated" : " · Not AI evaluated"}</p>
-          {finding.ai_evaluated && finding.ai_confidence != null && <p className="muted">AI confidence: {Math.round(finding.ai_confidence * 100)}%</p>}
-        </div>
-      </div>
-
-      {finding.ai_summary && <div><b>AI assessment summary</b><p>{finding.ai_summary}</p></div>}
-      {finding.ai_findings.length > 0 && <div className="section">
-        <b>Structured obligation findings</b>
-        <div className="stack">{finding.ai_findings.map((item, index) => <div key={`${item.requirement}-${index}`}>
-          <div className="row between"><b>{item.requirement}</b><Badge tone={item.status === "Non-Compliant" ? "default" : "soft"}>{item.status}</Badge></div>
-          <p>{item.reasoning}</p>
-          {item.evidence && <p className="muted">Evidence: “{item.evidence}” {item.source && `· ${item.source}`}</p>}
-        </div>)}</div>
-      </div>}
-
-      {finding.missing_info.length > 0 && (
-        <div>
-          <b>Business information to confirm</b>
-          <ul>{finding.missing_info.map((item, i) => <li key={i}>{item.question}</li>)}</ul>
+        <div className={`reg-score ${finding.score == null ? "muted-score" : ""}`}>{finding.score == null ? "—" : `${Math.round(finding.score)}%`}</div>
+      </button>
+      {open && (
+        <div className="reg-body">
+          <p className="muted" style={{ marginTop: 14 }}><b>Why this applies: </b>{finding.applicability_reason || "No explanation recorded."}</p>
+          {finding.ai_summary && <p>{finding.ai_summary}</p>}
+          {finding.ai_findings.length > 0 && (
+            <div>
+              <b>Obligations checked ({finding.assessed_obligations} of {finding.total_obligations} verified)</b>
+              {finding.ai_findings.map((item, i) => (
+                <div className="obl" key={`${item.requirement}-${i}`}>
+                  <div className="obl-top">
+                    <b>{item.requirement}</b>
+                    <div className="actions">
+                      <Badge tone="soft">{item.criticality}</Badge>
+                      <Badge tone={statusTone(item.status)}>{statusLabel(item.status)}</Badge>
+                    </div>
+                  </div>
+                  {item.reasoning && <p className="muted">{item.reasoning}</p>}
+                  {(item.evidence || item.evidence_refs?.length > 0) && (
+                    <div className="obl-evidence">
+                      {item.evidence ? <>“{item.evidence}” </> : null}
+                      {item.evidence_refs?.length > 0 && <>· Evidence {item.evidence_refs.join(", ")}</>}
+                      {item.citation && <> · Regulation passage {item.citation}</>}
+                    </div>
+                  )}
+                  {item.action && item.status !== "Compliant" && <div className="obl-action"><b>Next step: </b>{item.action}</div>}
+                </div>
+              ))}
+            </div>
+          )}
+          {finding.missing_info.length > 0 && (
+            <div className="section"><b>Business information to confirm</b><ul>{finding.missing_info.map((m, i) => <li key={i}>{m.question}</li>)}</ul></div>
+          )}
+          {!locked && applicable && (
+            <div className="row between section" style={{ flexWrap: "wrap", gap: 12 }}>
+              <div className="actions">
+                <Button size="sm" variant="outline" loading={busy} onClick={() => onEvaluate(finding)}>{finding.ai_evaluated ? "Re-run AI" : "Run AI"}</Button>
+              </div>
+              <label className="muted" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                Override status
+                <Select value={finding.compliance_status} onChange={(e) => onOverride(finding, e.target.value)} style={{ width: "auto" }}>
+                  {STATUSES.map((s) => <option key={s} value={s}>{statusLabel(s)}</option>)}
+                </Select>
+              </label>
+            </div>
+          )}
         </div>
       )}
-
-      <div className="section">
-        <b>Compliance gap</b>
-        <p>{finding.compliance_gap}</p>
-      </div>
-
-      <div>
-        <b>Risk contribution</b>
-        <p>{finding.risk_contribution}/100 · {finding.risk_reason}</p>
-      </div>
-
-      <div>
-        <b>Recommended next step</b>
-        <p>{finding.action_recommendation}</p>
-      </div>
-
-      {finding.due_on && <p className="muted">Recorded due date: {formatDate(finding.due_on)}</p>}
     </Card>
+  );
+}
+
+function ActionPlan({ items, locked, onRemind }: { items: ActionItem[]; locked: boolean; onRemind: (item: ActionItem) => void }) {
+  if (!items.length) return <Card><Empty>No open actions. Run the AI evaluation to generate a prioritised plan.</Empty></Card>;
+  return (
+    <Card>
+      <p className="muted" style={{ marginTop: 0 }}>Ordered by urgency × how critical the obligation is. “Needs evidence” items become compliant once you add proof to the Library or Filings and re-run the AI.</p>
+      {items.map((item, i) => (
+        <div className="plan-item" key={`${item.finding_id}-${i}`}>
+          <Badge tone={item.priority === "Critical" || item.priority === "High" ? "danger" : "soft"}>{item.priority}</Badge>
+          <div>
+            <b>{item.requirement}</b>
+            <p className="muted">{item.regulation} · {statusLabel(item.status)}</p>
+            <p>{item.action}</p>
+          </div>
+          {!locked && <Button size="sm" variant="outline" onClick={() => onRemind(item)}>Add reminder</Button>}
+        </div>
+      ))}
+    </Card>
+  );
+}
+
+function AiBanner({ ai }: { ai?: AiStatus }) {
+  if (!ai) return null;
+  if (!ai.available) {
+    return <Alert tone="error">AI scoring is off: no AI key is configured on the server. Add <b>GROQ_API_KEY</b> to the backend environment and redeploy. Until then, scores can only come from manual statuses.</Alert>;
+  }
+  return (
+    <div className="row between" style={{ marginBottom: 16 }}>
+      <span className="muted">AI engine: <b>{ai.provider}</b> · {ai.model}</span>
+      {/* <Button size="sm" variant="outline" loading={checking} onClick={onCheck}>Test AI connection</Button> */}
+    </div>
   );
 }
 
 export function AssessmentsPage() {
   const list = useResource<Assessment[]>("/assessments");
   const regulations = useResource<Regulation[]>("/regulations");
-  const { run, success } = useFeedback();
+  const ai = useResource<AiStatus>("/assessments/ai-status");
+  const { run, success, error } = useFeedback();
   const [active, setActive] = useState<Assessment>();
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [busy, setBusy] = useState(false);
-  const published = (regulations.data ?? []).filter((regulation) => regulation.status === "ready");
+  // const [checking, setChecking] = useState(false);
+  const [progress, setProgress] = useState<Progress | null>(null);
+  const [busyFinding, setBusyFinding] = useState<number | null>(null);
+  const [tab, setTab] = useState<Tab>("regulations");
+  const published = (regulations.data ?? []).filter((r) => r.status === "ready");
   const query = new URLSearchParams(window.location.hash.split("?")[1] ?? "").get("q")?.trim() ?? "";
   const needle = query.toLocaleLowerCase();
-  const assessments = (list.data ?? []).filter((assessment) => !query ||
-    `assessment ${assessment.id} ${assessment.status} ${assessment.risk_level} ${assessment.critical_missing.join(" ")}`.toLocaleLowerCase().includes(needle));
+  const assessments = (list.data ?? []).filter((a) => !query ||
+    `assessment ${a.id} ${a.status} ${a.risk_level} ${a.critical_missing.join(" ")}`.toLocaleLowerCase().includes(needle));
+  const locked = active?.status === "complete";
+
+  const refresh = (a: Assessment) => { setActive(a); list.reload(); window.dispatchEvent(new Event("rl:assessment-completed")); };
+
+  /** Evaluate regulations one request each (2 at a time) so progress is visible and nothing times out. */
+  async function evaluateAll(target: Assessment, force = false) {
+    const todo = (target.findings ?? []).filter((f) => f.applicability !== "Not Applicable" && (force || !f.ai_evaluated));
+    if (!todo.length) { success("Every applicable regulation has already been evaluated"); return; }
+    setProgress({ done: 0, total: todo.length, current: todo[0].title });
+    const failures: string[] = [];
+    let next = 0;
+    const worker = async () => {
+      while (next < todo.length) {
+        const f = todo[next++];
+        setProgress((p) => p && { ...p, current: f.title });
+        try {
+          const r = await api<EvaluateResult>(`/assessments/${target.id}/findings/${f.id}/evaluate`, { method: "POST" });
+          if (!r.ok && r.error) failures.push(r.error);
+        } catch (e) { failures.push(errorMessage(e)); }
+        setProgress((p) => p && { ...p, done: p.done + 1 });
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(2, todo.length) }, worker));
+    try {
+      refresh(await api<Assessment>(`/assessments/${target.id}/rescore`, { method: "POST" }));
+    } catch (e) { error(errorMessage(e)); }
+    setProgress(null);
+    if (failures.length) {
+      const unique = [...new Set(failures)];
+      error(`${failures.length} of ${todo.length} regulations could not be evaluated: ${unique[0]}${unique.length > 1 ? ` (+${unique.length - 1} other issue${unique.length > 2 ? "s" : ""})` : ""}`);
+    } else success("AI evaluation finished; compliance score updated");
+  }
 
   async function start() {
     setBusy(true);
-    const assessment = await run(() => api<Assessment>("/assessments", {
-      method: "POST", json: { regulation_ids: selectedIds },
-    }), "Assessment created");
+    const created = await run(() => api<Assessment>("/assessments", { method: "POST", json: { regulation_ids: selectedIds } }), "Assessment created");
     setBusy(false);
-    if (assessment) {
-      setActive(assessment);
-      list.reload();
-    }
+    if (!created) return;
+    setTab("regulations");
+    refresh(created);
+    await evaluateAll(created);
   }
 
   async function open(id: number) {
-    const assessment = await run(() => api<Assessment>(`/assessments/${id}`));
-    if (assessment) setActive(assessment);
+    const a = await run(() => api<Assessment>(`/assessments/${id}`));
+    if (a) { setActive(a); setTab("regulations"); }
   }
 
-  async function completeActive() {
+  async function complete() {
     if (!active) return;
-    const assessment = await run(() => api<Assessment>(`/assessments/${active.id}/complete`, { method: "POST" }), "Assessment completed; applicable regulations added to the Risk dashboard");
-    if (assessment) {
-      setActive(assessment);
-      list.reload();
-      window.dispatchEvent(new Event("rl:assessment-completed"));
-    }
+    const a = await run(() => api<Assessment>(`/assessments/${active.id}/complete`, { method: "POST" }), "Assessment completed; applicable regulations added to the Risk dashboard");
+    if (a) refresh(a);
   }
 
-  async function evaluateActive() {
+  async function evaluateOne(f: Finding) {
     if (!active) return;
-    setBusy(true);
-    const result = await run(() => api<Assessment & { ai_evaluated_now?: number }>(`/assessments/${active.id}/evaluate`, { method: "POST" }));
-    setBusy(false);
-    if (result) {
-      setActive(result);
-      list.reload();
-      window.dispatchEvent(new Event("rl:assessment-completed"));
-      if (result.ai_evaluated_now) success(`${result.ai_evaluated_now} regulation${result.ai_evaluated_now === 1 ? "" : "s"} AI evaluated; compliance score updated`);
-      else success("No findings were evaluated. Check that an AI provider is configured and regulation text is indexed.");
-    }
+    setBusyFinding(f.id);
+    try {
+      const r = await api<EvaluateResult>(`/assessments/${active.id}/findings/${f.id}/evaluate`, { method: "POST" });
+      if (r.ok) { refresh(await api<Assessment>(`/assessments/${active.id}`)); success("Regulation re-evaluated"); }
+      else error(r.error ?? "The AI could not evaluate this regulation");
+    } catch (e) { error(errorMessage(e)); }
+    setBusyFinding(null);
   }
 
+  async function override(f: Finding, status: string) {
+    if (!active) return;
+    const a = await run(() => api<Assessment>(`/assessments/${active.id}/findings/${f.id}`, { method: "PATCH", json: { compliance_status: status } }), "Status updated; score recalculated");
+    if (a) refresh(a);
+  }
+
+  async function remind(item: ActionItem) {
+    const due = addDays(DUE_DAYS[item.priority] ?? 30);
+    const r = await run(() => api("/reminders", { method: "POST", json: { title: `${item.regulation}: ${item.requirement}`.slice(0, 160), due: due < todayISO() ? todayISO() : due, lead: 3 } }), `Reminder added for ${formatDate(due)}`);
+    if (r) window.dispatchEvent(new Event("rl:reminders-changed"));
+  }
+
+  /*
+  async function checkAi() {
+    setChecking(true);
+    try {
+      const r = await api<AiStatus>("/assessments/ai-status?check=true");
+      if (r.ok) success("AI connection works"); else error(r.error ?? "The AI provider did not respond");
+    } catch (e) { error(errorMessage(e)); }
+    setChecking(false);
+  }
+  */
+
+  const pending = active?.findings?.filter((f) => f.applicability !== "Not Applicable" && !f.ai_evaluated).length ?? 0;
   const counts = active?.counts ?? {};
   return (
     <Page>
       <PageHeader
         title="Assessments"
-        description="Read how each regulation relates to your business. Applicable regulations are added to the Risk dashboard as soon as they are marked."
-        action={<Button loading={busy} disabled={!selectedIds.length || !published.length} onClick={start}>Start assessment</Button>}
+        description="AI reads each regulation, checks it against your profile, registrations, filings and documents, and scores how well you comply."
+        action={<Button loading={busy || !!progress} disabled={!selectedIds.length || !published.length} onClick={start}>Start assessment</Button>}
       />
       <ErrorNotice error={list.error} />
       <ErrorNotice error={regulations.error} />
+      <AiBanner ai={ai.data} />
       <Card>
         <div className="row between top">
           <div>
@@ -138,83 +246,92 @@ export function AssessmentsPage() {
             <p className="muted">Choose the published regulations for this assessment. {selectedIds.length} selected.</p>
           </div>
           <div className="actions">
-            <Button type="button" size="sm" variant="outline" disabled={!published.length}
-              onClick={() => setSelectedIds(published.map((regulation) => regulation.id))}>Select all</Button>
-            <Button type="button" size="sm" variant="outline" disabled={!selectedIds.length}
-              onClick={() => setSelectedIds([])}>Clear</Button>
+            <Button size="sm" variant="outline" disabled={!published.length} onClick={() => setSelectedIds(published.map((r) => r.id))}>Select all</Button>
+            <Button size="sm" variant="outline" disabled={!selectedIds.length} onClick={() => setSelectedIds([])}>Clear</Button>
           </div>
         </div>
         {!regulations.data ? <Loader /> : published.length ? (
           <div className="stack">
-            {published.map((regulation) => (
-              <Checkbox key={regulation.id} label={`${regulation.title} · ${regulation.regulator}`}
-                checked={selectedIds.includes(regulation.id)}
-                onChange={(event) => setSelectedIds((current) => event.target.checked
-                  ? [...current, regulation.id]
-                  : current.filter((id) => id !== regulation.id))} />
+            {published.map((r) => (
+              <Checkbox key={r.id} label={`${r.title} · ${r.regulator}`} checked={selectedIds.includes(r.id)}
+                onChange={(e) => setSelectedIds((cur) => e.target.checked ? [...cur, r.id] : cur.filter((id) => id !== r.id))} />
             ))}
           </div>
         ) : <Empty>No published regulations are available to assess.</Empty>}
       </Card>
+
       {!list.data ? <Loader /> : assessments.length ? (
-        <div className="grid grid-2">{assessments.map((assessment) => (
-          <Card key={assessment.id}>
-            <b><Highlight text={`Assessment #${assessment.id}`} query={query} /></b>
-            <p className="muted">{formatDate(assessment.created_at)} · {assessment.status}</p>
-            <p>Compliance {pct(assessment.compliance_score)} · Risk {pct(assessment.risk_score)} · {assessment.risk_level}</p>
-            <Button size="sm" variant="outline" onClick={() => open(assessment.id)}>View assessment</Button>
+        <div className="grid grid-2" style={{ marginTop: 24 }}>{assessments.map((a) => (
+          <Card key={a.id}>
+            <b><Highlight text={`Assessment #${a.id}`} query={query} /></b>
+            <p className="muted">{formatDate(a.created_at)} · {a.status === "complete" ? "Final" : "Draft"}</p>
+            <p>Compliance {pct(a.compliance_score)} · Coverage {a.coverage == null ? "—" : `${Math.round(a.coverage * 100)}%`} · Risk {pct(a.risk_score)}</p>
+            <Button size="sm" variant="outline" onClick={() => open(a.id)}>View assessment</Button>
           </Card>
         ))}</div>
-      ) : <Empty>{list.data.length ? `No assessments match “${query}”.` : "No assessments yet. Start one to review regulations against your business profile."}</Empty>}
+      ) : <Empty>{list.data.length ? `No assessments match “${query}”.` : "No assessments yet. Select regulations above and start one."}</Empty>}
 
       {active && (
         <section className="section">
           <PageHeader
             title={`Assessment #${active.id}`}
-            description={`${formatDate(active.created_at)} · ${active.status} · Compliance ${pct(active.compliance_score)} · Risk ${pct(active.risk_score)}`}
-            action={<div className="actions"><Badge tone={active.risk_level === "High" ? "default" : "soft"}>{active.risk_level} risk</Badge>{active.findings?.some((finding) => finding.applicability === "Applicable" && !finding.ai_evaluated) && <Button loading={busy} onClick={evaluateActive}>Run AI evaluation</Button>}{active.status !== "complete" && <Button variant="outline" onClick={completeActive}>Complete assessment</Button>}</div>}
+            description={`${formatDate(active.created_at)} · ${locked ? "Final" : "Draft"}`}
+            action={!locked && (
+              <div className="actions">
+                <Button variant="outline" loading={!!progress} onClick={() => evaluateAll(active, pending === 0)}>{pending ? `Run AI evaluation (${pending})` : "Re-run AI on all"}</Button>
+                <Button onClick={complete}>Complete assessment</Button>
+              </div>
+            )}
           />
-          <Card>
-            <h3 style={{ marginTop: 0 }}>Compliance score</h3>
-            <p className="muted">AI evaluates each applicable regulation against its indexed text, the business profile, and enabled evidence documents. The score averages points across scored AI obligation findings (or a manually confirmed status when AI findings are unavailable). Unable to Determine and applicability-unknown findings are excluded.</p>
-            {active.findings?.some((finding) => finding.applicability === "Applicable" && !finding.ai_evaluated) && <p className="muted">Some applicable findings could not be AI evaluated because a regulation passage or AI response was unavailable. They remain Unable to Determine and are excluded from the score.</p>}
-            <div className="table-wrap">
-              <table>
-                <thead><tr><th>Compliance status</th><th>Score</th></tr></thead>
-                <tbody>
-                  <tr><td>Compliant</td><td>100</td></tr>
-                  <tr><td>Partially Compliant</td><td>50</td></tr>
-                  <tr><td>Non-Compliant</td><td>0</td></tr>
-                  <tr><td>Unable to Determine</td><td>Excluded until assessed</td></tr>
-                  <tr><td>Not Applicable</td><td>Excluded</td></tr>
-                </tbody>
-              </table>
+          {progress && (
+            <div className="eval-banner" role="status">
+              <b>AI is evaluating {progress.done} of {progress.total}</b>
+              <div className="progress"><i style={{ width: `${(progress.done / progress.total) * 100}%` }} /></div>
+              <span className="muted">Now reading: {progress.current}</span>
             </div>
-          </Card>
-          <Card>
-            <b>Risk score: {pct(active.risk_score)} · {active.risk_level}</b>
-            {active.risk_estimated && <p>This is an estimate reflecting uncertainty and potential compliance gaps, not confirmed non-compliance. Findings with unknown applicability contribute as potential risk but are not counted as confirmed applicable regulations.</p>}
-            <p className="muted">{active.risk_formula}</p>
-            <p className="muted">{active.applicable_count} confirmed applicable · {active.unknown_applicability_count} applicability unknown · {active.unassessed_count} compliance status unassessed.</p>
-            <b>Regulations contributing to this score</b>
-            <div className="stack section">{active.risk_contributors.map((item, index) => <div key={`${item.title}-${index}`}>
-              <b>{item.title}</b>
-              <p>{item.score}/100 · {item.applicability === "Unknown" ? "Applicability unknown (potential contributor)" : item.applicability} · Severity {item.severity} · Likelihood {item.likelihood} · Compliance {item.compliance_status}</p>
-              <p className="muted">{item.reason}</p>
-            </div>)}</div>
-          </Card>
-          <div className="chips">
-            <Badge>Applicable {counts.applicable || 0}</Badge>
-            <Badge tone="soft">Not applicable {counts.not_applicable || 0}</Badge>
-            <Badge tone="soft">Unknown {counts.unknown || 0}</Badge>
-            <Badge tone={counts.evidence_gaps ? "default" : "soft"}>Evidence gaps {counts.evidence_gaps || 0}</Badge>
-          </div>
-          {active.critical_missing.length > 0 && (
-            <Card><b>Business profile information to complete</b><p>{active.critical_missing.join(", ")}</p></Card>
           )}
-          <div className="stack">
-            {active.findings?.map((finding) => <FindingCard key={finding.id} finding={finding} />)}
+          <Card>
+            <div className="score-hero">
+              <ScoreGauge value={active.compliance_score} />
+              <div className="score-stats">
+                <div className="stat"><b>{active.coverage == null ? "—" : `${Math.round(active.coverage * 100)}%`}</b><span>Evidence coverage ({active.assessed_obligations} of {active.total_obligations} obligations verified)</span></div>
+                <div className="stat"><b>{active.confidence ?? "—"}</b><span>Score confidence</span></div>
+                <div className="stat"><b>{pct(active.risk_score)}</b><span>Risk score · {active.risk_level}</span></div>
+                <div className="stat"><b>{counts.applicable || 0}</b><span>Applicable · {counts.not_applicable || 0} not applicable · {counts.unknown || 0} unknown</span></div>
+              </div>
+            </div>
+            {active.compliance_score == null && <p className="muted" style={{ marginBottom: 0 }}>{active.compliance_score_reason}</p>}
+            {active.compliance_score != null && active.score_basis === "provisional" && (
+              <p className="muted" style={{ marginBottom: 0 }}>Provisional: {active.waiting_for_ai ? `${active.waiting_for_ai} regulation(s) are not evaluated yet. ` : ""}{(active.coverage ?? 1) < 0.5 ? "Less than half of the obligations could be verified from your evidence. " : ""}Add filings, registrations and Library documents (enabled for AI) to raise coverage.</p>
+            )}
+          </Card>
+          {active.critical_missing.length > 0 && <Alert>Complete these Business Profile details for better results: {active.critical_missing.join(", ")}.</Alert>}
+
+          <div className="tabs" role="tablist">
+            {([["regulations", "Regulations"], ["plan", `Action plan (${active.action_plan?.length ?? 0})`], ["method", "How it is scored"]] as const).map(([id, label]) => (
+              <button key={id} type="button" role="tab" aria-selected={tab === id} className={`tab ${tab === id ? "is-active" : ""}`} onClick={() => setTab(id)}>{label}</button>
+            ))}
           </div>
+
+          {tab === "regulations" && <div className="stack">{active.findings?.map((f) => (
+            <FindingCard key={`${f.id}-${f.compliance_status}-${f.ai_evaluated}`} finding={f} locked={!!locked} busy={busyFinding === f.id || !!progress}
+              onEvaluate={evaluateOne} onOverride={override} />
+          ))}</div>}
+          {tab === "plan" && <ActionPlan items={active.action_plan ?? []} locked={!!locked} onRemind={remind} />}
+          {tab === "method" && (
+            <Card>
+              <h3 style={{ marginTop: 0 }}>How the AI score is calculated</h3>
+              <ol>
+                <li>For each applicable regulation, the AI picks the obligations that matter to your business and checks them against your profile, registrations, filing history and the Library documents you enabled for AI.</li>
+                <li>A verdict counts only when it cites real evidence. If it cites nothing verifiable it is downgraded to <b>Needs evidence</b>.</li>
+                <li>Compliant = 100, Partially Compliant = 50, Non-Compliant = 0. Critical obligations count 3×, medium 2×, low 1×.</li>
+                <li><b>Needs evidence</b> items are left out of the score but lower <b>coverage</b> and <b>confidence</b>, and appear in the action plan.</li>
+                <li>You can override any regulation’s status; your choice replaces the AI verdict in the score.</li>
+              </ol>
+              <p className="muted">{active.risk_formula}</p>
+              <p className="muted">This is an AI-assisted estimate to support review, not legal advice.</p>
+            </Card>
+          )}
         </section>
       )}
     </Page>

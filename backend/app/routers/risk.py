@@ -54,7 +54,7 @@ def _check(db: Session, user: User, level, status, owner_id) -> None:
 def overview(user: User = Depends(current_user), db: Session = Depends(get_db)):
     s = metrics.risk_summary(db, user.workspace_id)
     assessment = metrics.latest_assessment(db, user.workspace_id)
-    assessment_risk = metrics.risk_details(assessment.findings) if assessment else None
+    assessment_risk = metrics.risk_details(assessment.findings) if assessment and assessment.status == "complete" else None
     finding_by_regulation = {f"finding:{f.regulation_id}": f for f in assessment.findings} if assessment else {}
     members = db.scalars(select(User).where(User.workspace_id == user.workspace_id).order_by(User.name))
     register = []

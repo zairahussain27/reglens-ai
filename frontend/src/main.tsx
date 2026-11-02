@@ -6,6 +6,7 @@ import { FeedbackProvider } from "./components/feedback";
 import "./styles/global.css";
 import "./styles/components.css";
 import "./styles/auth.css";
+import "./styles/compliance.css";
 
 createRoot(document.getElementById("root")!).render(
   <React.StrictMode>

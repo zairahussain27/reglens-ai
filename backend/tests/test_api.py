@@ -139,6 +139,9 @@ def test_company_assessment_risk_reports_alerts(client, auth):
         "listed_entity": "No", "data_handled": "Aadhaar, PAN", "pan": "abcde1234f", "established_year": "2019",
         "registrations": [{"registration_type": "GST", "required_status": "required", "status": "active"}]})
     assert ok.status_code == 200 and ok.json()["profile"]["complete"] and ok.json()["company"]["pan"] == "ABCDE1234F"
+    renamed = dict(ok.json()["company"])
+    renamed["legal_name"] = "Different Name"
+    assert client.put("/api/company", headers=h, json=renamed).status_code == 403
     a = client.post("/api/assessments", headers=h).json()
     by = {f["title"]: f for f in a["findings"]}
     assert by["RBI Guidelines on Digital Lending"]["applicability"] == "Applicable"

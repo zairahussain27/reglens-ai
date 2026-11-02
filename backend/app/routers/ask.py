@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from ..db import get_db
 from ..deps import current_user
 from ..models import AskLog, Document, Regulation, User
-from ..services import llm, retrieval
+from ..services import context_pack, llm, metrics, retrieval
 from ..utils import iso
 
 router = APIRouter(prefix="/ask")
@@ -43,7 +43,8 @@ def ask(body: AskIn, user: User = Depends(current_user), db: Session = Depends(g
     hits = retrieval.vector_search(db, question, user.workspace_id, k=5)
     if hits is None:
         hits = retrieval.get_index(db, user.workspace_id).search(question, k=5)
-    text = llm.answer(question, hits)
+    profile = context_pack.profile_summary(metrics.get_company(db, user.workspace_id).data)
+    text = llm.answer(question, hits, profile)
     sources = [{"doc": h.title, "page": h.page, "snippet": h.text[:320] + ("…" if len(h.text) > 320 else "")} for h in hits[:5]]
     row = AskLog(workspace_id=user.workspace_id, user_id=user.id, question=question, answer=text, sources=sources, found=bool(hits))
     db.add(row)

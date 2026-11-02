@@ -101,10 +101,7 @@ export function BusinessPage() {
   const [saved, setSaved] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
-  // Keep the persisted name as the baseline while the one-time change is available.
   const [lockedLegalName, setLockedLegalName] = useState("");
-  const [legalNameChangeUsed, setLegalNameChangeUsed] = useState(false);
-  const [allowLegalNameChange, setAllowLegalNameChange] = useState(false);
 
   useEffect(() => {
     if (!resource.data) return;
@@ -116,13 +113,10 @@ export function BusinessPage() {
     setRegs(company.registrations ?? []);
     setLater(resource.data.profile.dismissed);
 
-    // Assumes an existing legal name was previously saved.
     setLockedLegalName(initial.legal_name?.trim() ?? "");
-    setLegalNameChangeUsed(resource.data.legal_name_change_used);
-    setAllowLegalNameChange(false);
   }, [resource.data]);
 
-  const legalNameLocked = Boolean(lockedLegalName) && (legalNameChangeUsed || !allowLegalNameChange);
+  const legalNameLocked = Boolean(lockedLegalName);
 
   const set =
     (key: string) =>
@@ -240,8 +234,6 @@ export function BusinessPage() {
         if (savedName) {
           setLockedLegalName(savedName);
         }
-        setLegalNameChangeUsed(result.legal_name_change_used);
-        setAllowLegalNameChange(false);
       }
     } finally {
       setBusy(false);
@@ -282,22 +274,9 @@ export function BusinessPage() {
           />
         </FormField>
 
-        {isLocked && !legalNameChangeUsed && (
-          <Button type="button" variant="outline" size="sm" onClick={() => setAllowLegalNameChange(true)}>
-            Use one-time legal name change
-          </Button>
-        )}
-        {isLocked && legalNameChangeUsed && (
+        {isLocked && (
           <p className="muted" style={{ fontSize: 12, marginTop: 4 }}>
-            Your one-time legal name change has been used. This name is permanently locked.
-          </p>
-        )}
-        {!isLocked && Boolean(lockedLegalName) && (
-          <p className="muted" style={{ fontSize: 12, marginTop: 4 }}>
-            Saving a different name will use your one-time change.
-            <Button type="button" variant="outline" size="sm" onClick={() => setAllowLegalNameChange(false)}>
-              Cancel
-            </Button>
+            The registered legal name cannot be changed.
           </p>
         )}
 

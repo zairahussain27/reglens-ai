@@ -5,7 +5,7 @@ sources), screen regulations against your business profile, run assessments, and
 
 ```
 frontend/   React 18 + TypeScript + Vite (hash-routed SPA, white + orange theme)
-backend/    FastAPI + SQLAlchemy (SQLite by default) + BM25 retrieval, all routes under /api
+backend/    FastAPI + SQLAlchemy with PostgreSQL, all routes under /api
 ```
 
 ## Run locally (two terminals)
@@ -43,10 +43,9 @@ FastAPI serves `frontend/dist` itself, so one process serves UI and API. Or use 
 | Variable | Purpose |
 |---|---|
 | `JWT_SECRET` | Token signing key. **Required** when `ENV=production`. |
-| `DATABASE_URL` | Default SQLite. Any SQLAlchemy URL works (e.g. `postgresql+psycopg://...`, add the driver). |
+| `DATABASE_URL` | **Required PostgreSQL connection URL**, for example `postgresql+psycopg://...`. All application records are stored here. |
 | `GOOGLE_CLIENT_ID` | Enables the Google sign-in button (frontend reads it from `/api/config`). |
-| `ANTHROPIC_API_KEY` / `ANTHROPIC_MODEL` | Optional Claude answer generation, grounded only in retrieved passages. Anthropic is preferred when both providers are configured. |
-| `GROQ_API_KEY` / `GROQ_MODEL` | Optional Groq answer generation. Without either provider key, Ask returns cited extractive answers from retrieved passages. |
+| `GROQ_API_KEY` / `GROQ_MODEL` | Optional Groq answer generation, grounded only in retrieved passages. Without this key, Ask returns cited extractive answers. |
 | `QDRANT_URL`, `QDRANT_API_KEY`, `QDRANT_TIMEOUT_SECONDS` | Optional vector search and indexing. Vector writes are sent in batches; the timeout defaults to 60 seconds. SQL search remains available if Qdrant is unavailable. |
 | `CORS_ORIGINS`, `MAX_UPLOAD_MB` | Allowed origins and upload size cap. |
 
@@ -90,11 +89,11 @@ Vercel SPA rewrite at [`frontend/vercel.json`](./frontend/vercel.json).
    - `DATABASE_URL`: a Supabase PostgreSQL URL. The application accepts Supabase
      `postgresql://`/`postgres://` URLs and uses the `psycopg` driver.
    - `CORS_ORIGINS`: `https://reglens-ai-zeta.vercel.app,http://localhost:5173`
-   - `GOOGLE_CLIENT_ID`, `ANTHROPIC_API_KEY`, `GROQ_API_KEY`, `QDRANT_URL`, and
+   - `GOOGLE_CLIENT_ID`, `GROQ_API_KEY`, `QDRANT_URL`, and
      `QDRANT_API_KEY` only when those integrations are used.
-4. Keep the persistent disk mounted at `/data`. The default SQLite database and
-   uploaded files are stored there. User and application records are stored in
-   PostgreSQL; `/data` is only for uploaded files.
+4. Keep the persistent disk mounted at `/data` for uploaded files. User and
+   application records are stored in PostgreSQL; `/data` is not used for the
+   database.
 
 ### 1b. Deploy the backend on Vercel
 
@@ -108,11 +107,11 @@ Configure these variables in the backend Vercel project:
 - `DATABASE_URL` (the Supabase PostgreSQL connection or pooler URL)
 - `CORS_ORIGINS=https://reglens-ai-zeta.vercel.app,http://localhost:5173`
 - `UPLOAD_DIR=/tmp/uploads`
-- Optional `GOOGLE_CLIENT_ID`, `ANTHROPIC_API_KEY`, `GROQ_API_KEY`,
+- Optional `GOOGLE_CLIENT_ID`, `GROQ_API_KEY`,
   `QDRANT_URL`, and `QDRANT_API_KEY`
 
-On Vercel, a PostgreSQL `DATABASE_URL` is mandatory. SQLite is retained only for
-local development.
+On Vercel, a PostgreSQL `DATABASE_URL` is mandatory. SQLite is used only by the
+isolated automated test suite.
 
 After deployment, verify `https://<render-service>.onrender.com/api/health`
 returns `{"status":"ok"}` and copy the service URL.

@@ -49,8 +49,8 @@ export function RiskPage() {
       <ErrorNotice error={resource.error} />
       {!data ? <Loader /> : <>
         <div className="kpis">
-          <Kpi value={data.assessment?.risk_score == null ? "Not yet calculated" : `${data.assessment.risk_score}%`}
-            label={data.assessment?.estimated ? "Estimated risk score" : "Latest assessment risk"} hint={data.assessment ? `${data.assessment.risk_level} · ${formatDate(data.assessment.created_at)}` : "Start an assessment to calculate risk"} />
+          <Kpi value={!data.assessment ? "0%" : data.assessment.risk_score == null ? "Unable to calculate" : `${data.assessment.risk_score}%`}
+            label={data.assessment?.estimated ? "Estimated risk score" : "Latest assessment risk"} hint={data.assessment ? `${data.assessment.risk_level} · ${formatDate(data.assessment.created_at)}` : "No completed assessment yet"} />
           <Kpi value={data.open} label="Unresolved items" />
           <Kpi value={data.overdue} label="Overdue" />
           <Kpi value={data.overall} label="Register level" />

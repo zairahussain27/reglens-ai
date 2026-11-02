@@ -40,10 +40,6 @@ export function TopNavbar({
           onChange={(event) => setQuery(event.target.value)}
         />
 
-        <span className="top-navbar__shortcut">
-          <kbd>Ctrl</kbd>
-          <kbd>K</kbd>
-        </span>
       </form>
 
       <div className="top-navbar__actions">

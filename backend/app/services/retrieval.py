@@ -119,11 +119,14 @@ def vector_search(db: Session, query: str, workspace_id: int, k: int = 5) -> lis
         logging.getLogger("reglens.retrieval").warning("Qdrant search unavailable: %s", exc)
         return None
     ids = [int(p.payload["chunk_id"]) for p in points if p.payload and p.payload.get("chunk_id")]
-    if not ids:
-        # Ignore stale or unlinked Qdrant entries and use the SQL-backed index instead.
-        return None
     rows = {c.id: c for c in db.scalars(select(Chunk).where(Chunk.id.in_(ids))).all()}
-    hits = [Hit(rows[chunk_id].id, rows[chunk_id].title, rows[chunk_id].page, rows[chunk_id].text, float(point.score))
-            for point in points if point.payload and point.payload.get("chunk_id")
-            for chunk_id in [int(point.payload["chunk_id"])] if chunk_id in rows]
+    legacy = vector_store.resolve_legacy_chunks(db, points) if len(rows) < len(points) else {}
+    hits = []
+    for point in points:
+        if not point.payload or not point.payload.get("chunk_id"):
+            continue
+        chunk_id = int(point.payload["chunk_id"])
+        chunk = rows.get(chunk_id) or legacy.get(point.id)
+        if chunk:
+            hits.append(Hit(chunk.id, chunk.title, chunk.page, chunk.text, float(point.score)))
     return hits or None
